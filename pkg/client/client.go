@@ -4,9 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
+
 	"github.com/GDATASoftwareAG/cloud-provider-ionoscloud/pkg/config"
 	v1 "k8s.io/api/core/v1"
-	"strings"
 
 	ionoscloud "github.com/ionos-cloud/sdk-go/v6"
 	cloudprovider "k8s.io/cloud-provider"
@@ -30,7 +31,10 @@ func (a *IONOSClient) GetServer(ctx context.Context, datacenterId, providerID st
 	}
 	serverReq := a.client.ServersApi.DatacentersServersFindById(ctx, datacenterId, providerID)
 	server, req, err := serverReq.Depth(1).Execute()
-	if req.StatusCode == 404 {
+	if err != nil || req != nil && req.StatusCode == 404 {
+		if err != nil {
+			return nil, errors.New("not found")
+		}
 		return nil, err
 	}
 	return a.convertServerToInstanceMetadata(ctx, datacenterId, &server)
@@ -45,7 +49,7 @@ func (a *IONOSClient) datacenterLocation(ctx context.Context, datacenterId strin
 		return location, nil
 	}
 	datacenter, req, err := a.client.DataCentersApi.DatacentersFindById(ctx, datacenterId).Depth(1).Execute()
-	if req.StatusCode == 404 || err != nil {
+	if err != nil || req != nil && req.StatusCode == 404 {
 		return "", err
 	}
 	a.cacheDatacenterLocation[datacenterId] = *datacenter.Properties.Location
@@ -82,11 +86,11 @@ func (a *IONOSClient) GetServerByName(ctx context.Context, datacenterId, name st
 	}
 	serverReq := a.client.ServersApi.DatacentersServersGet(ctx, datacenterId)
 	servers, req, err := serverReq.Depth(2).Execute()
-	if req.StatusCode == 404 {
+	if err != nil || servers.Items == nil || req != nil && req.StatusCode == 404 {
+		if err != nil {
+			return nil, errors.New("empty err or no servers")
+		}
 		return nil, err
-	}
-	if servers.Items == nil {
-		return nil, nil
 	}
 	items := *servers.Items
 	for i := range items {

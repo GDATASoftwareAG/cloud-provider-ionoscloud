@@ -48,7 +48,7 @@ func (a *IONOSClient) datacenterLocation(ctx context.Context, datacenterId strin
 	if exists {
 		return location, nil
 	}
-	datacenter, req, err := a.client.DataCentersApi.DatacentersFindById(ctx, datacenterId).Depth(1).Execute()
+	datacenter, req, err := a.client.DataCentersApi.DatacentersFindById(ctx, datacenterId).Depth(2).Execute()
 	if err != nil || req != nil && req.StatusCode == 404 {
 		return "", err
 	}
@@ -67,6 +67,7 @@ func (a *IONOSClient) convertServerToInstanceMetadata(ctx context.Context, datac
 	if server == nil {
 		return nil, nil
 	}
+
 	metadata := &cloudprovider.InstanceMetadata{
 		ProviderID:    fmt.Sprintf("%s%s", config.ProviderPrefix, *server.Id),
 		InstanceType:  fmt.Sprintf("dedicated-core-server.cpu-%s-%d.mem-%dmb", *server.Properties.CpuFamily, *server.Properties.Cores, *server.Properties.Ram),
@@ -95,9 +96,6 @@ func (a *IONOSClient) GetServerByName(ctx context.Context, datacenterId, name st
 	items := *servers.Items
 	for i := range items {
 		server := &items[i]
-		klog.Infof("%v", server)
-		klog.Infof("%v", server.Properties)
-		klog.Infof("%S", *server.Properties.Name)
 		if server.Properties.Name != nil && *server.Properties.Name == name {
 			return a.convertServerToInstanceMetadata(ctx, datacenterId, server)
 		}

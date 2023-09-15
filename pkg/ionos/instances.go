@@ -2,6 +2,7 @@ package ionos
 
 import (
 	"context"
+	"errors"
 	"github.com/GDATASoftwareAG/cloud-provider-ionoscloud/pkg/config"
 	v1 "k8s.io/api/core/v1"
 	cloudprovider "k8s.io/cloud-provider"
@@ -21,12 +22,19 @@ func GetUUIDFromNode(node *v1.Node) string {
 
 // no caching
 func (i instances) discoverNode(ctx context.Context, node *v1.Node) (*cloudprovider.InstanceMetadata, error) {
+	var err error
+	var server *cloudprovider.InstanceMetadata
 	providerID := GetUUIDFromNode(node)
 	klog.Infof("discoverNode %s %s", node.Name, providerID)
 	if providerID != "" {
-		return i.client.GetServer(ctx, i.datacenterId, providerID)
+		server, err = i.client.GetServer(ctx, i.datacenterId, providerID)
+	} else {
+		server, err = i.client.GetServerByName(ctx, i.datacenterId, node.Name)
 	}
-	return i.client.GetServerByName(ctx, i.datacenterId, node.Name)
+	if err == nil && server == nil {
+		return nil, errors.New("failed to discoverNode")
+	}
+	return server, err
 }
 
 func (i instances) InstanceExists(ctx context.Context, node *v1.Node) (bool, error) {

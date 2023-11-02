@@ -3,6 +3,8 @@ package ionos
 import (
 	"context"
 	"errors"
+	"fmt"
+	client2 "github.com/GDATASoftwareAG/cloud-provider-ionoscloud/pkg/client"
 	"github.com/GDATASoftwareAG/cloud-provider-ionoscloud/pkg/config"
 	v1 "k8s.io/api/core/v1"
 	cloudprovider "k8s.io/cloud-provider"
@@ -20,21 +22,38 @@ func GetUUIDFromNode(node *v1.Node) string {
 	return strings.ToLower(strings.TrimSpace(withoutPrefix))
 }
 
+func (i instances) AddClient(datacenterId string, token []byte) error {
+	if i.clients[datacenterId] == nil {
+		c, err := client2.New(datacenterId, token)
+		if err != nil {
+			return err
+		}
+		i.clients[datacenterId] = &c
+	}
+	return nil
+}
+
 // no caching
 func (i instances) discoverNode(ctx context.Context, node *v1.Node) (*cloudprovider.InstanceMetadata, error) {
-	var err error
-	var server *cloudprovider.InstanceMetadata
-	providerID := GetUUIDFromNode(node)
-	klog.Infof("discoverNode %s %s", node.Name, providerID)
-	if providerID != "" {
-		server, err = i.client.GetServer(ctx, i.datacenterId, providerID)
-	} else {
-		server, err = i.client.GetServerByName(ctx, i.datacenterId, node.Name)
+	for _, client := range i.clients {
+		var err error
+		var server *cloudprovider.InstanceMetadata
+		providerID := GetUUIDFromNode(node)
+		klog.Infof("discoverNode (datacenterId %s) %s %s", client.DatacenterId, node.Name, providerID)
+		if providerID != "" {
+			server, err = client.GetServer(ctx, providerID)
+		} else {
+			server, err = client.GetServerByName(ctx, node.Name)
+		}
+		if err != nil {
+			return nil, errors.New(fmt.Sprintf("failed to discoverNode %v", err))
+		}
+		if server == nil {
+			continue
+		}
+		return server, nil
 	}
-	if err == nil && server == nil {
-		return nil, errors.New("failed to discoverNode")
-	}
-	return server, err
+	return nil, errors.New("failed to discoverNode")
 }
 
 func (i instances) InstanceExists(ctx context.Context, node *v1.Node) (bool, error) {

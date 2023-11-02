@@ -31,13 +31,10 @@ func init() {
 var _ cloudprovider.Interface = &IONOS{}
 
 func newProvider(config config.Config) cloudprovider.Interface {
-	client := &client2.IONOSClient{}
 	return IONOS{
 		config: config,
-		client: client,
 		instances: instances{
-			datacenterId: config.DatacenterId,
-			client:       client,
+			clients: map[string]*client2.IONOSClient{},
 		},
 	}
 }
@@ -54,7 +51,14 @@ func (p IONOS) Initialize(clientBuilder cloudprovider.ControllerClientBuilder, _
 		klog.Errorf("Failed to get secret %s/%s: %v", p.config.TokenSecretNamespace, p.config.TokenSecretName, err)
 		return
 	}
-	p.client.Initialize(string(secret.Data[config.Token]))
+	for key, token := range secret.Data {
+		klog.Infof("AddClient %s", key)
+		err := p.instances.AddClient(key, token)
+		if err != nil {
+			klog.Errorf("Failed to create client for datacenter %s: %v", key, err)
+			return
+		}
+	}
 }
 
 func (p IONOS) LoadBalancer() (cloudprovider.LoadBalancer, bool) {

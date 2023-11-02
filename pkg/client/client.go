@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -15,52 +16,69 @@ import (
 )
 
 type IONOSClient struct {
-	client                  *ionoscloud.APIClient
-	cacheDatacenterLocation map[string]string
+	client        *ionoscloud.APIClient
+	cacheLocation string
+	DatacenterId  string
 }
 
-func (a *IONOSClient) Initialize(token string) {
-	cfg := ionoscloud.NewConfiguration("", "", token, "https://api.ionos.com/cloudapi/v6")
+type userpassword struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+}
+
+func New(datacenterId string, secret []byte) (IONOSClient, error) {
+	var cfg *ionoscloud.Configuration
+	if secret[0] == '{' {
+		var up userpassword
+		if err := json.Unmarshal(secret, &up); err != nil {
+			return IONOSClient{}, err
+		}
+		cfg = ionoscloud.NewConfiguration(up.Username, up.Password, "", "https://api.ionos.com/cloudapi/v6")
+	} else {
+		cfg = ionoscloud.NewConfiguration("", "", string(secret), "https://api.ionos.com/cloudapi/v6")
+	}
+	a := IONOSClient{}
 	a.client = ionoscloud.NewAPIClient(cfg)
-	a.cacheDatacenterLocation = map[string]string{}
+	a.cacheLocation = ""
+	a.DatacenterId = datacenterId
+	return a, nil
 }
 
-func (a *IONOSClient) GetServer(ctx context.Context, datacenterId, providerID string) (*cloudprovider.InstanceMetadata, error) {
+func (a *IONOSClient) GetServer(ctx context.Context, providerID string) (*cloudprovider.InstanceMetadata, error) {
 	if a.client == nil {
 		return nil, errors.New("client isn't initialized")
 	}
-	serverReq := a.client.ServersApi.DatacentersServersFindById(ctx, datacenterId, providerID)
+	serverReq := a.client.ServersApi.DatacentersServersFindById(ctx, a.DatacenterId, providerID)
 	server, req, err := serverReq.Depth(1).Execute()
 	if err != nil || req != nil && req.StatusCode == 404 {
 		if err != nil {
-			return nil, errors.New("not found")
+			return nil, nil
 		}
 		return nil, err
 	}
-	return a.convertServerToInstanceMetadata(ctx, datacenterId, &server)
+	return a.convertServerToInstanceMetadata(ctx, &server)
 }
 
-func (a *IONOSClient) datacenterLocation(ctx context.Context, datacenterId string) (string, error) {
+func (a *IONOSClient) datacenterLocation(ctx context.Context) (string, error) {
 	if a.client == nil {
 		return "", errors.New("client isn't initialized")
 	}
-	location, exists := a.cacheDatacenterLocation[datacenterId]
-	if exists {
-		return location, nil
+	if a.cacheLocation != "" {
+		return a.cacheLocation, nil
 	}
-	datacenter, req, err := a.client.DataCentersApi.DatacentersFindById(ctx, datacenterId).Depth(2).Execute()
+	datacenter, req, err := a.client.DataCentersApi.DatacentersFindById(ctx, a.DatacenterId).Depth(2).Execute()
 	if err != nil || req != nil && req.StatusCode == 404 {
 		return "", err
 	}
-	a.cacheDatacenterLocation[datacenterId] = *datacenter.Properties.Location
+	a.cacheLocation = *datacenter.Properties.Location
 	return *datacenter.Properties.Location, nil
 }
 
-func (a *IONOSClient) convertServerToInstanceMetadata(ctx context.Context, datacenterId string, server *ionoscloud.Server) (*cloudprovider.InstanceMetadata, error) {
+func (a *IONOSClient) convertServerToInstanceMetadata(ctx context.Context, server *ionoscloud.Server) (*cloudprovider.InstanceMetadata, error) {
 	if a.client == nil {
 		return nil, errors.New("client isn't initialized")
 	}
-	location, err := a.datacenterLocation(ctx, datacenterId)
+	location, err := a.datacenterLocation(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -80,16 +98,16 @@ func (a *IONOSClient) convertServerToInstanceMetadata(ctx context.Context, datac
 	return metadata, err
 }
 
-func (a *IONOSClient) GetServerByName(ctx context.Context, datacenterId, name string) (*cloudprovider.InstanceMetadata, error) {
+func (a *IONOSClient) GetServerByName(ctx context.Context, name string) (*cloudprovider.InstanceMetadata, error) {
 	klog.Infof("GetServerByName %s", name)
 	if a.client == nil {
 		return nil, errors.New("client is initialized")
 	}
-	serverReq := a.client.ServersApi.DatacentersServersGet(ctx, datacenterId)
+	serverReq := a.client.ServersApi.DatacentersServersGet(ctx, a.DatacenterId)
 	servers, req, err := serverReq.Depth(2).Execute()
 	if err != nil || servers.Items == nil || req != nil && req.StatusCode == 404 {
 		if err != nil {
-			return nil, errors.New("empty err or no servers")
+			return nil, nil
 		}
 		return nil, err
 	}
@@ -97,7 +115,7 @@ func (a *IONOSClient) GetServerByName(ctx context.Context, datacenterId, name st
 	for i := range items {
 		server := &items[i]
 		if server.Properties.Name != nil && *server.Properties.Name == name {
-			return a.convertServerToInstanceMetadata(ctx, datacenterId, server)
+			return a.convertServerToInstanceMetadata(ctx, server)
 		}
 	}
 	return nil, err

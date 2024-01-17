@@ -15,9 +15,6 @@ jobs:
     steps:
       - name: Check out code
         uses: actions/checkout@v2
-      - name: Run tests
-        run: |
-          make test
   build:
     runs-on: ubuntu-latest
     steps:

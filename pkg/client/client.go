@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"strings"
 
 	"github.com/GDATASoftwareAG/cloud-provider-ionoscloud/pkg/config"
@@ -49,7 +50,7 @@ func (a *IONOSClient) GetServer(ctx context.Context, providerID string) (*cloudp
 		return nil, errors.New("client isn't initialized")
 	}
 	serverReq := a.client.ServersApi.DatacentersServersFindById(ctx, a.DatacenterId, providerID)
-	server, req, err := serverReq.Depth(1).Execute()
+	server, req, err := serverReq.Depth(2).Execute()
 	if err != nil || req != nil && req.StatusCode == 404 {
 		if err != nil {
 			return nil, nil
@@ -86,10 +87,34 @@ func (a *IONOSClient) convertServerToInstanceMetadata(ctx context.Context, serve
 		return nil, nil
 	}
 
+	var addresses []v1.NodeAddress
+	klog.Infof("Found %v nics", len(*server.Entities.Nics.Items))
+	for _, nic := range *server.Entities.Nics.Items {
+		ips := *nic.Properties.Ips
+		klog.Infof("Found %v ips for nic %s. Only using the first one as the remaining ones are failover ips", len(ips), *nic.Properties.Name)
+		if len(ips) > 0 {
+			ipStr := ips[0]
+			ip := net.ParseIP(ipStr)
+			if ip == nil {
+				klog.Error("Parsing failed")
+				continue
+			}
+			var t v1.NodeAddressType
+			if ip.IsPrivate() {
+				t = v1.NodeInternalIP
+			} else {
+				t = v1.NodeExternalIP
+			}
+			addresses = append(addresses, v1.NodeAddress{
+				Type:    t,
+				Address: ipStr,
+			})
+		}
+	}
 	metadata := &cloudprovider.InstanceMetadata{
 		ProviderID:    fmt.Sprintf("%s%s", config.ProviderPrefix, *server.Id),
 		InstanceType:  fmt.Sprintf("dedicated-core-server.cpu-%s-%d.mem-%dmb", *server.Properties.CpuFamily, *server.Properties.Cores, *server.Properties.Ram),
-		NodeAddresses: []v1.NodeAddress{},
+		NodeAddresses: addresses,
 		Zone:          *server.Properties.AvailabilityZone,
 		Region:        strings.Replace(location, "/", "-", 1),
 	}

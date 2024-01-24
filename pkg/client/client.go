@@ -129,7 +129,7 @@ func (a *IONOSClient) GetServerByName(ctx context.Context, name string) (*cloudp
 		return nil, errors.New("client is initialized")
 	}
 	serverReq := a.client.ServersApi.DatacentersServersGet(ctx, a.DatacenterId)
-	servers, req, err := serverReq.Depth(2).Execute()
+	servers, req, err := serverReq.Depth(3).Execute()
 	if err != nil || servers.Items == nil || req != nil && req.StatusCode == 404 {
 		if err != nil {
 			return nil, nil

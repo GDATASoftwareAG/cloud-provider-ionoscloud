@@ -23,8 +23,9 @@ type IONOSClient struct {
 }
 
 type userpassword struct {
-	Username string `json:"username"`
-	Password string `json:"password"`
+	Username string   `json:"username,omitempty"`
+	Password string   `json:"password,omitempty"`
+	Tokens   []string `json:"tokens,omitempty"`
 }
 
 func New(datacenterId string, secret []byte) (IONOSClient, error) {
@@ -34,7 +35,11 @@ func New(datacenterId string, secret []byte) (IONOSClient, error) {
 		if err := json.Unmarshal(secret, &up); err != nil {
 			return IONOSClient{}, err
 		}
-		cfg = ionoscloud.NewConfiguration(up.Username, up.Password, "", "https://api.ionos.com/cloudapi/v6")
+		if len(up.Tokens) != 0 {
+			cfg = ionoscloud.NewConfiguration("", "", up.Tokens[0], "https://api.ionos.com/cloudapi/v6")
+		} else {
+			cfg = ionoscloud.NewConfiguration(up.Username, up.Password, "", "https://api.ionos.com/cloudapi/v6")
+		}
 	} else {
 		cfg = ionoscloud.NewConfiguration("", "", string(secret), "https://api.ionos.com/cloudapi/v6")
 	}

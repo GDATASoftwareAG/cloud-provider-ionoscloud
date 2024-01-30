@@ -1,0 +1,226 @@
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: cloud-controller-manager
+  labels:
+    ionoscloud-cpi-infra: service-account
+    component: cloud-controller-manager
+  namespace: kube-system
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ionoscloud-cloud-config
+  labels:
+    ionoscloud-cpi-infra: config
+    component: cloud-controller-manager
+  namespace: kube-system
+data:
+  ionoscloud.json: |
+    {
+      "tokenSecretName": "ionos-secret",
+      "tokenSecretNamespace": "kube-system"
+    }
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: servicecatalog.k8s.io:apiserver-authentication-reader
+  labels:
+    ionoscloud-cpi-infra: role-binding
+    component: cloud-controller-manager
+  namespace: kube-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: extension-apiserver-authentication-reader
+subjects:
+  - apiGroup: ""
+    kind: ServiceAccount
+    name: cloud-controller-manager
+    namespace: kube-system
+  - apiGroup: ""
+    kind: User
+    name: cloud-controller-manager
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: system:cloud-controller-manager
+  labels:
+    ionoscloud-cpi-infra: cluster-role-binding
+    component: cloud-controller-manager
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system:cloud-controller-manager
+subjects:
+  - kind: ServiceAccount
+    name: cloud-controller-manager
+    namespace: kube-system
+  - kind: User
+    name: cloud-controller-manager
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: system:cloud-controller-manager
+  labels:
+    ionoscloud-cpi-infra: role
+    component: cloud-controller-manager
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - events
+    verbs:
+      - create
+      - patch
+      - update
+  - apiGroups:
+      - ""
+    resources:
+      - nodes
+    verbs:
+      - "*"
+  - apiGroups:
+      - ""
+    resources:
+      - nodes/status
+    verbs:
+      - patch
+  - apiGroups:
+      - ""
+    resources:
+      - services
+    verbs:
+      - list
+      - patch
+      - update
+      - watch
+  - apiGroups:
+      - ""
+    resources:
+      - services/status
+    verbs:
+      - patch
+  - apiGroups:
+      - ""
+    resources:
+      - serviceaccounts
+    verbs:
+      - create
+      - get
+      - list
+      - watch
+      - update
+  - apiGroups:
+      - ""
+    resources:
+      - persistentvolumes
+    verbs:
+      - get
+      - list
+      - update
+      - watch
+  - apiGroups:
+      - ""
+    resources:
+      - endpoints
+    verbs:
+      - create
+      - get
+      - list
+      - watch
+      - update
+  - apiGroups:
+      - ""
+    resources:
+      - secrets
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - "coordination.k8s.io"
+    resources:
+      - leases
+    verbs:
+      - create
+      - get
+      - list
+      - watch
+      - update
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: ionoscloud-cloud-controller-manager
+  labels:
+    component: cloud-controller-manager
+    tier: control-plane
+  namespace: kube-system
+spec:
+  selector:
+    matchLabels:
+      name: ionoscloud-cloud-controller-manager
+  updateStrategy:
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        name: ionoscloud-cloud-controller-manager
+        component: cloud-controller-manager
+        tier: control-plane
+    spec:
+      imagePullSecrets:
+        - name: ionos-platform-registry
+      tolerations:
+        - key: node.cloudprovider.kubernetes.io/uninitialized
+          value: "true"
+          effect: NoSchedule
+        - key: node-role.kubernetes.io/master
+          effect: NoSchedule
+          operator: Exists
+        - key: node-role.kubernetes.io/control-plane
+          effect: NoSchedule
+          operator: Exists
+        - key: node.kubernetes.io/not-ready
+          effect: NoSchedule
+          operator: Exists
+      securityContext:
+        runAsUser: 1001
+      serviceAccountName: cloud-controller-manager
+      priorityClassName: system-node-critical
+      containers:
+        - name: ionoscloud-cloud-controller-manager
+          image: ghcr.io/gdatasoftwareag/cloud-provider-ionoscloud:v0.0.1
+          command:
+            - /usr/bin/cloud-provider-ionoscloud
+            - --cloud-provider=ionos
+            - --v=4
+            - --cloud-config=/etc/cloud/ionoscloud.json
+          volumeMounts:
+            - mountPath: /etc/cloud
+              name: ionoscloud-config-volume
+              readOnly: true
+          resources:
+            requests:
+              cpu: 200m
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      volumes:
+        - name: ionoscloud-config-volume
+          configMap:
+            name: ionoscloud-cloud-config
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: node-role.kubernetes.io/control-plane
+                    operator: Exists
+              - matchExpressions:
+                  - key: node-role.kubernetes.io/master
+                    operator: Exists

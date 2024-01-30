@@ -1,6 +1,6 @@
 module github.com/GDATASoftwareAG/cloud-provider-ionoscloud
 
-go 1.20
+go 1.21
 
 require (
 	github.com/ionos-cloud/sdk-go/v6 v6.1.8

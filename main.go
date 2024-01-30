@@ -2,6 +2,10 @@ package main
 
 import (
 	"fmt"
+	"math/rand"
+	"os"
+	"time"
+
 	"github.com/GDATASoftwareAG/cloud-provider-ionoscloud/pkg/config"
 	_ "github.com/GDATASoftwareAG/cloud-provider-ionoscloud/pkg/ionos"
 	"github.com/spf13/cobra"
@@ -17,9 +21,6 @@ import (
 	"k8s.io/component-base/term"
 	"k8s.io/component-base/version/verflag"
 	klog "k8s.io/klog/v2"
-	"math/rand"
-	"os"
-	"time"
 )
 
 const AppName string = "ionoscloud-cloud-controller-manager"

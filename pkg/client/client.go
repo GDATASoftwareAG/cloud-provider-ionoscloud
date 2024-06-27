@@ -96,7 +96,11 @@ func (a *IONOSClient) convertServerToInstanceMetadata(ctx context.Context, serve
 	klog.Infof("Found %v nics", len(*server.Entities.Nics.Items))
 	for _, nic := range *server.Entities.Nics.Items {
 		ips := *nic.Properties.Ips
-		klog.Infof("Found %v ips for nic %s. Only using the first one as the remaining ones are failover ips", len(ips), *nic.Properties.Name)
+		nicName := "unknown"
+		if nic.Properties.Name != nil {
+			nicName = *nic.Properties.Name
+		}
+		klog.Infof("Found %v ips for nic %s. Only using the first one as the remaining ones are failover ips", len(ips), nicName)
 		if len(ips) > 0 {
 			ipStr := ips[0]
 			ip := net.ParseIP(ipStr)

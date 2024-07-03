@@ -65,6 +65,68 @@ func (a *IONOSClient) GetServer(ctx context.Context, providerID string) (*cloudp
 	return a.convertServerToInstanceMetadata(ctx, &server)
 }
 
+func (a *IONOSClient) AttachIPToNode(ctx context.Context, loadBalancerIP, providerID string) (bool, error) {
+	if a.client == nil {
+		return false, errors.New("client isn't initialized")
+	}
+
+	serverReq := a.client.NetworkInterfacesApi.DatacentersServersNicsGet(ctx, a.DatacenterId, providerID)
+	nics, req, err := serverReq.Depth(3).Execute()
+	if req != nil && req.StatusCode == 404 {
+		return false, err
+	}
+
+	if !nics.HasItems() {
+		return false, nil
+	}
+
+	primaryNic := (*nics.Items)[0]
+	ips := *primaryNic.Properties.Ips
+	ips = append(ips, loadBalancerIP)
+
+	_, _, err = a.client.NetworkInterfacesApi.DatacentersServersNicsPatch(ctx, a.DatacenterId, providerID, *primaryNic.Id).Nic(ionoscloud.NicProperties{
+		Ips: &ips,
+	}).Execute()
+
+	return err != nil, err
+}
+
+func (a *IONOSClient) GetServerByIP(ctx context.Context, loadBalancerIP string) (*string, error) {
+	if a.client == nil {
+		return nil, errors.New("client isn't initialized")
+	}
+
+	serverReq := a.client.ServersApi.DatacentersServersGet(ctx, a.DatacenterId)
+	servers, req, err := serverReq.Depth(3).Execute()
+	if err != nil || req != nil && req.StatusCode == 404 {
+		if err != nil {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	if !servers.HasItems() {
+		return nil, nil
+	}
+
+	for _, server := range *servers.Items {
+		if !server.Entities.HasNics() {
+			continue
+		}
+		for _, nic := range *server.Entities.Nics.Items {
+			if nic.Properties.HasIps() {
+				for _, ip := range *nic.Properties.Ips {
+					if loadBalancerIP == ip {
+						return server.Properties.Name, nil
+					}
+				}
+			}
+		}
+	}
+
+	return nil, nil
+}
+
 func (a *IONOSClient) datacenterLocation(ctx context.Context) (string, error) {
 	if a.client == nil {
 		return "", errors.New("client isn't initialized")

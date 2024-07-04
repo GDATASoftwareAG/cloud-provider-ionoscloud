@@ -89,7 +89,7 @@ func (a *IONOSClient) RemoveIPFromNode(ctx context.Context, loadBalancerIP, prov
 		return errors.New("node has no nics")
 	}
 
-	primaryNic := getPrimaryNic(*nics.Items)
+	primaryNic := (*nics.Items)[0]
 	ips := *primaryNic.Properties.Ips
 
 	for idx, v := range ips {
@@ -103,15 +103,6 @@ func (a *IONOSClient) RemoveIPFromNode(ctx context.Context, loadBalancerIP, prov
 	}).Execute()
 
 	return err
-}
-
-func getPrimaryNic(nics []ionoscloud.Nic) *ionoscloud.Nic {
-	for _, nic := range nics {
-		if *nic.Properties.PciSlot == 6 {
-			return &nic
-		}
-	}
-	return nil
 }
 
 func (a *IONOSClient) AttachIPToNode(ctx context.Context, loadBalancerIP, providerID string) (bool, error) {
@@ -132,7 +123,7 @@ func (a *IONOSClient) AttachIPToNode(ctx context.Context, loadBalancerIP, provid
 		return false, errors.New("node has no nics")
 	}
 
-	primaryNic := getPrimaryNic(*nics.Items)
+	primaryNic := (*nics.Items)[1]
 	ips := *primaryNic.Properties.Ips
 	ips = append(ips, loadBalancerIP)
 

@@ -2,7 +2,6 @@ package ionos
 
 import (
 	"context"
-	"encoding/json"
 	client2 "github.com/GDATASoftwareAG/cloud-provider-ionoscloud/pkg/client"
 	"github.com/GDATASoftwareAG/cloud-provider-ionoscloud/pkg/config"
 	"io"
@@ -13,16 +12,21 @@ import (
 
 func init() {
 	cloudprovider.RegisterCloudProvider(config.RegisteredProviderName, func(cfg io.Reader) (cloudprovider.Interface, error) {
-		byConfig, err := io.ReadAll(cfg)
-		if err != nil {
-			klog.Errorf("ReadAll failed: %s", err)
-			return nil, err
-		}
+		//
+		//byConfig, err := io.ReadAll(cfg)
+		//if err != nil {
+		//    klog.Errorf("ReadAll failed: %s", err)
+		//    return nil, err
+		//}
+		//var conf config.Config
+		//err = json.Unmarshal(byConfig, &conf)
+		//if err != nil {
+		//    return nil, err
+		//}
+
 		var conf config.Config
-		err = json.Unmarshal(byConfig, &conf)
-		if err != nil {
-			return nil, err
-		}
+		conf.TokenSecretNamespace = "kube-system"
+		conf.TokenSecretName = "ionos-cpi-secret"
 
 		return newProvider(conf), nil
 	})

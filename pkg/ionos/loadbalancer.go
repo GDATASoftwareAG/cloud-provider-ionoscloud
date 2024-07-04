@@ -6,7 +6,9 @@ import (
 	client2 "github.com/GDATASoftwareAG/cloud-provider-ionoscloud/pkg/client"
 	v1 "k8s.io/api/core/v1"
 	cloudprovider "k8s.io/cloud-provider"
+	"k8s.io/klog/v2"
 	"math/rand"
+	"strings"
 	"time"
 )
 
@@ -33,25 +35,24 @@ func (l loadbalancer) AddClient(datacenterId string, token []byte) error {
 // there exists a LoadBalancer instance created by ServiceController.
 // In all other cases, GetLoadBalancer must return a NotFound error.
 func (l loadbalancer) GetLoadBalancer(ctx context.Context, clusterName string, service *v1.Service) (status *v1.LoadBalancerStatus, exists bool, err error) {
-	//TODO check if any node has service.spec.loadbalancerip
-	// TODO check spec.loadbalancerclass + use .spec.loadbalancerip
-	if service.Spec.Type != v1.ServiceTypeLoadBalancer {
-		return nil, false, errors.New("NotFound")
+	klog.Infof("getLoadBalancer (service %s/%s)", service.Namespace, service.Name)
+
+	server, err := l.ServerWithLoadBalancer(ctx, service.Spec.LoadBalancerIP)
+	if err != nil {
+		return nil, false, err
 	}
 
-	if service.Spec.LoadBalancerIP == "" {
-		return nil, false, errors.New("NotFound")
+	if server != nil {
+		return &v1.LoadBalancerStatus{Ingress: []v1.LoadBalancerIngress{{IP: service.Spec.LoadBalancerIP}}}, true, nil
 	}
 
-	panic("implement me")
+	return nil, false, nil
 }
 
 // GetLoadBalancerName returns the name of the load balancer. Implementations must treat the
 // *v1.Service parameter as read-only and not modify it.
 func (l loadbalancer) GetLoadBalancerName(ctx context.Context, clusterName string, service *v1.Service) string {
-	//TODO return service.metadata.uid
-
-	panic("implement me")
+	return cloudprovider.DefaultLoadBalancerName(service)
 }
 
 // EnsureLoadBalancer creates a new load balancer 'name', or updates the existing one. Returns the status of the balancer
@@ -65,101 +66,7 @@ func (l loadbalancer) GetLoadBalancerName(ctx context.Context, clusterName strin
 // polling at a fixed rate is preferred over backing off exponentially in
 // order to minimize latency.
 func (l loadbalancer) EnsureLoadBalancer(ctx context.Context, clusterName string, service *v1.Service, nodes []*v1.Node) (*v1.LoadBalancerStatus, error) {
-	//TODO check if ip already attached to some node,  attach loadbalancerIP to some node (not on controlplanes)
-	server, err := l.GetServerWithLoadBalancer(ctx, service.Spec.LoadBalancerIP)
-	if err != nil {
-		return nil, err
-	}
-
-	if server != nil {
-		node := getNode(*server, nodes)
-		if IsLoadBalancerCandidate(node) {
-			return &v1.LoadBalancerStatus{Ingress: []v1.LoadBalancerIngress{v1.LoadBalancerIngress{
-				IP: service.Spec.LoadBalancerIP,
-			}}}, nil
-		}
-	}
-
-	loadBalancerNode := l.GetLoadBalancerNode(nodes)
-
-	if loadBalancerNode == nil {
-		return nil, errors.New("No valid Nodes found")
-	}
-
-	for _, client := range l.ionosClients {
-		ok, err := client.AttachIPToNode(ctx, service.Spec.LoadBalancerIP, loadBalancerNode.Spec.ProviderID)
-		if err != nil {
-			return nil, err
-		}
-
-		if ok {
-			return &v1.LoadBalancerStatus{Ingress: []v1.LoadBalancerIngress{v1.LoadBalancerIngress{
-				IP: service.Spec.LoadBalancerIP,
-			}}}, nil
-		}
-	}
-
-	return nil, nil
-}
-
-func getNode(server string, nodes []*v1.Node) *v1.Node {
-	for _, node := range nodes {
-		if node.Name == server {
-			return node
-		}
-	}
-	return nil
-}
-
-func (l loadbalancer) GetLoadBalancerNode(nodes []*v1.Node) *v1.Node {
-	var candidates []*v1.Node
-	for _, node := range nodes {
-		if IsLoadBalancerCandidate(node) {
-			candidates = append(candidates, node)
-		}
-	}
-
-	rand.Seed(time.Now().UnixNano())
-	randomIndex := rand.Intn(len(candidates))
-	return candidates[randomIndex]
-}
-
-func (l loadbalancer) GetServerWithLoadBalancer(ctx context.Context, loadBalancerIP string) (*string, error) {
-	for _, client := range l.ionosClients {
-		server, err := client.GetServerByIP(ctx, loadBalancerIP)
-		if err != nil {
-			return nil, err
-		}
-
-		if server != nil {
-			return server, nil
-		}
-	}
-
-	return nil, nil
-}
-
-func IsLoadBalancerCandidate(node *v1.Node) bool {
-	if IsControlPlane(node) {
-		return false
-	}
-
-	for _, condition := range node.Status.Conditions {
-		if condition.Type == v1.NodeReady && condition.Status == v1.ConditionTrue {
-			return true
-		}
-		return false
-	}
-	return false
-}
-
-func IsControlPlane(node *v1.Node) bool {
-	for _, taint := range node.Spec.Taints {
-		if taint.Key == "node-role.kubernetes.io/control-plane" {
-			return true
-		}
-	}
-	return false
+	return l.syncLoadBalancer(ctx, clusterName, service, nodes)
 }
 
 // UpdateLoadBalancer updates hosts under the specified load balancer.
@@ -167,8 +74,8 @@ func IsControlPlane(node *v1.Node) bool {
 // parameters as read-only and not modify them.
 // Parameter 'clusterName' is the name of the cluster as presented to kube-controller-manager
 func (l loadbalancer) UpdateLoadBalancer(ctx context.Context, clusterName string, service *v1.Service, nodes []*v1.Node) error {
-	//TODO same as EnsureLoadBalancer
-	panic("implement me")
+	_, err := l.syncLoadBalancer(ctx, clusterName, service, nodes)
+	return err
 }
 
 // EnsureLoadBalancerDeleted deletes the specified load balancer if it
@@ -182,6 +89,146 @@ func (l loadbalancer) UpdateLoadBalancer(ctx context.Context, clusterName string
 // EnsureLoadBalancerDeleted must not return ImplementedElsewhere to ensure
 // proper teardown of resources that were allocated by the ServiceController.
 func (l loadbalancer) EnsureLoadBalancerDeleted(ctx context.Context, clusterName string, service *v1.Service) error {
-	//TODO remove ip from node
-	panic("implement me")
+	klog.Infof("ensureLoadBalancerDeleted (service %s/%s)", service.Namespace, service.Name)
+
+	if service.Spec.LoadBalancerIP == "" {
+		return errors.New("we are only handling LoadBalancers with spec.loadBalancerID != ''")
+	}
+
+	server, err := l.ServerWithLoadBalancer(ctx, service.Spec.LoadBalancerIP)
+	if err != nil {
+		return err
+	}
+
+	if server != nil {
+		return l.deleteLoadBalancerFromNode(ctx, service.Spec.LoadBalancerIP, server)
+	}
+
+	return nil
+}
+
+func (l loadbalancer) deleteLoadBalancerFromNode(ctx context.Context, loadBalancerIP string, server *client2.Server) error {
+	for _, client := range l.ionosClients {
+		if client.DatacenterId != server.DatacenterID {
+			continue
+		}
+
+		server, err := client.GetServerByIP(ctx, loadBalancerIP)
+		if err != nil {
+			return err
+		}
+
+		if server != nil {
+			return client.RemoveIPFromNode(ctx, loadBalancerIP, server.ProviderID)
+		}
+	}
+
+	klog.Infof("IP %s not found in any datacenter", loadBalancerIP)
+	return nil
+}
+
+func (l loadbalancer) syncLoadBalancer(ctx context.Context, clusterName string, service *v1.Service, nodes []*v1.Node) (*v1.LoadBalancerStatus, error) {
+	klog.Infof("syncLoadBalancer (service %s/%s, nodes %s)", service.Namespace, service.Name, nodes)
+
+	if service.Spec.LoadBalancerIP == "" {
+		return nil, errors.New("we are only handling LoadBalancers with spec.loadBalancerID != ''")
+	}
+
+	server, err := l.ServerWithLoadBalancer(ctx, service.Spec.LoadBalancerIP)
+	if err != nil {
+		return nil, err
+	}
+
+	if server != nil {
+		klog.Infof("found server %s has IP %s ", server, service.Spec.LoadBalancerIP)
+		node := getNode(*server, nodes)
+		if node == nil {
+			return nil, errors.New("no node found for server which has loadbalancerIP attached")
+		}
+
+		if IsLoadBalancerCandidate(node) {
+			klog.Infof("server %s is valid loadbalancer node", server)
+			return &v1.LoadBalancerStatus{Ingress: []v1.LoadBalancerIngress{{
+				IP: service.Spec.LoadBalancerIP,
+			}}}, nil
+		}
+	}
+
+	loadBalancerNode := l.GetLoadBalancerNode(nodes)
+
+	if loadBalancerNode == nil {
+		return nil, errors.New("no valid nodes found")
+	}
+	klog.Infof("server %s is elected as new loadbalancer node", server)
+
+	for _, client := range l.ionosClients {
+		ok, err := client.AttachIPToNode(ctx, service.Spec.LoadBalancerIP, stripProviderFromID(loadBalancerNode.Spec.ProviderID))
+		if err != nil {
+			return nil, err
+		}
+
+		if ok {
+			klog.Infof("successfully attached ip %s to server %s", service.Spec.LoadBalancerIP, server)
+			return &v1.LoadBalancerStatus{Ingress: []v1.LoadBalancerIngress{{
+				IP: service.Spec.LoadBalancerIP,
+			}}}, nil
+		}
+	}
+
+	klog.Infof("Could not attach ip %s to any node", service.Spec.LoadBalancerIP)
+	return nil, nil
+}
+
+func getNode(server client2.Server, nodes []*v1.Node) *v1.Node {
+	for _, node := range nodes {
+		if stripProviderFromID(node.Spec.ProviderID) == server.ProviderID {
+			return node
+		}
+	}
+	return nil
+}
+
+func (l loadbalancer) GetLoadBalancerNode(nodes []*v1.Node) *v1.Node {
+	var candidates []*v1.Node
+	for _, node := range nodes {
+		if IsLoadBalancerCandidate(node) {
+			candidates = append(candidates, node)
+		}
+	}
+	if candidates == nil && len(candidates) == 0 {
+		return nil
+	}
+	rand.Seed(time.Now().UnixNano())
+	randomIndex := rand.Intn(len(candidates))
+	return candidates[randomIndex]
+}
+
+func (l loadbalancer) ServerWithLoadBalancer(ctx context.Context, loadBalancerIP string) (*client2.Server, error) {
+	for _, client := range l.ionosClients {
+		server, err := client.GetServerByIP(ctx, loadBalancerIP)
+		if err != nil {
+			return nil, err
+		}
+
+		if server != nil {
+			return server, nil
+		}
+	}
+
+	klog.Infof("IP %s not found in any datacenter", loadBalancerIP)
+	return nil, nil
+}
+
+func IsLoadBalancerCandidate(node *v1.Node) bool {
+	for _, condition := range node.Status.Conditions {
+		if condition.Type == v1.NodeReady && condition.Status == v1.ConditionTrue {
+			return true
+		}
+	}
+	return false
+}
+
+func stripProviderFromID(providerID string) string {
+	s, _ := strings.CutPrefix(providerID, "ionos://")
+	return s
 }

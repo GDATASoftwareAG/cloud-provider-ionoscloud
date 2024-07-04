@@ -28,6 +28,12 @@ type userpassword struct {
 	Tokens   []string `json:"tokens,omitempty"`
 }
 
+type Server struct {
+	Name         string
+	ProviderID   string
+	DatacenterID string
+}
+
 func New(datacenterId string, secret []byte) (IONOSClient, error) {
 	var cfg *ionoscloud.Configuration
 	if secret[0] == '{' {
@@ -63,6 +69,119 @@ func (a *IONOSClient) GetServer(ctx context.Context, providerID string) (*cloudp
 		return nil, err
 	}
 	return a.convertServerToInstanceMetadata(ctx, &server)
+}
+
+func (a *IONOSClient) RemoveIPFromNode(ctx context.Context, loadBalancerIP, providerID string) error {
+	if a.client == nil {
+		return errors.New("client isn't initialized")
+	}
+
+	serverReq := a.client.NetworkInterfacesApi.DatacentersServersNicsGet(ctx, a.DatacenterId, providerID)
+	nics, req, err := serverReq.Depth(3).Execute()
+	if err != nil {
+		if req != nil && req.StatusCode == 404 {
+			return nil
+		}
+		return err
+	}
+
+	if !nics.HasItems() {
+		return errors.New("node has no nics")
+	}
+
+	primaryNic := getPrimaryNic(*nics.Items)
+	ips := *primaryNic.Properties.Ips
+
+	for idx, v := range ips {
+		if v == loadBalancerIP {
+			ips = append(ips[:idx], ips[idx+1:]...)
+		}
+	}
+
+	_, _, err = a.client.NetworkInterfacesApi.DatacentersServersNicsPatch(ctx, a.DatacenterId, providerID, *primaryNic.Id).Nic(ionoscloud.NicProperties{
+		Ips: &ips,
+	}).Execute()
+
+	return err
+}
+
+func getPrimaryNic(nics []ionoscloud.Nic) *ionoscloud.Nic {
+	for _, nic := range nics {
+		if *nic.Properties.PciSlot == 6 {
+			return &nic
+		}
+	}
+	return nil
+}
+
+func (a *IONOSClient) AttachIPToNode(ctx context.Context, loadBalancerIP, providerID string) (bool, error) {
+	if a.client == nil {
+		return false, errors.New("client isn't initialized")
+	}
+
+	serverReq := a.client.NetworkInterfacesApi.DatacentersServersNicsGet(ctx, a.DatacenterId, providerID)
+	nics, req, err := serverReq.Depth(3).Execute()
+	if err != nil {
+		if req != nil && req.StatusCode == 404 {
+			return false, nil
+		}
+		return false, err
+	}
+
+	if !nics.HasItems() {
+		return false, errors.New("node has no nics")
+	}
+
+	primaryNic := getPrimaryNic(*nics.Items)
+	ips := *primaryNic.Properties.Ips
+	ips = append(ips, loadBalancerIP)
+
+	_, _, err = a.client.NetworkInterfacesApi.DatacentersServersNicsPatch(ctx, a.DatacenterId, providerID, *primaryNic.Id).Nic(ionoscloud.NicProperties{
+		Ips: &ips,
+	}).Execute()
+
+	return true, err
+}
+
+func (a *IONOSClient) GetServerByIP(ctx context.Context, loadBalancerIP string) (*Server, error) {
+	if a.client == nil {
+		return nil, errors.New("client isn't initialized")
+	}
+
+	serverReq := a.client.ServersApi.DatacentersServersGet(ctx, a.DatacenterId)
+	servers, _, err := serverReq.Depth(3).Execute()
+	if err != nil {
+		return nil, err
+	}
+
+	if !servers.HasItems() {
+		return nil, nil
+	}
+
+	for _, server := range *servers.Items {
+		klog.Infof("Checking server %s", server.Properties.Name)
+		if !server.Entities.HasNics() {
+			continue
+		}
+		for _, nic := range *server.Entities.Nics.Items {
+			if nic.Properties.HasIps() {
+				for _, ip := range *nic.Properties.Ips {
+					klog.Infof("Found ip  %s", ip)
+					if loadBalancerIP == ip {
+						klog.Info("Its a match!")
+						return &Server{
+							Name:         *server.Properties.Name,
+							ProviderID:   *server.Id,
+							DatacenterID: a.DatacenterId,
+						}, nil
+					}
+				}
+			}
+		}
+	}
+	klog.Infof("IP %s not found on any node in datacenter %s", loadBalancerIP, a.DatacenterId)
+
+	return nil, nil
 }
 
 func (a *IONOSClient) datacenterLocation(ctx context.Context) (string, error) {

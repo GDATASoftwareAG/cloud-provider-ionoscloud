@@ -13,6 +13,7 @@ import (
 
 func init() {
 	cloudprovider.RegisterCloudProvider(config.RegisteredProviderName, func(cfg io.Reader) (cloudprovider.Interface, error) {
+
 		byConfig, err := io.ReadAll(cfg)
 		if err != nil {
 			klog.Errorf("ReadAll failed: %s", err)
@@ -34,19 +35,22 @@ func newProvider(config config.Config) cloudprovider.Interface {
 	return IONOS{
 		config: config,
 		instances: instances{
-			clients: map[string]*client2.IONOSClient{},
+			ionosClients: map[string]*client2.IONOSClient{},
+		},
+		loadbalancer: loadbalancer{
+			ionosClients: map[string]*client2.IONOSClient{},
 		},
 	}
 }
 
 func (p IONOS) Initialize(clientBuilder cloudprovider.ControllerClientBuilder, _ <-chan struct{}) {
 	ctx := context.Background()
-	client, err := clientBuilder.Client(config.ClientName)
+	k8sClient, err := clientBuilder.Client(config.ClientName)
 	if err != nil {
 		klog.Errorf("Kubernetes Client Init Failed: %v", err)
 		return
 	}
-	secret, err := client.CoreV1().Secrets(p.config.TokenSecretNamespace).Get(ctx, p.config.TokenSecretName, metav1.GetOptions{})
+	secret, err := k8sClient.CoreV1().Secrets(p.config.TokenSecretNamespace).Get(ctx, p.config.TokenSecretName, metav1.GetOptions{})
 	if err != nil {
 		klog.Errorf("Failed to get secret %s/%s: %v", p.config.TokenSecretNamespace, p.config.TokenSecretName, err)
 		return
@@ -58,12 +62,17 @@ func (p IONOS) Initialize(clientBuilder cloudprovider.ControllerClientBuilder, _
 			klog.Errorf("Failed to create client for datacenter %s: %v", key, err)
 			return
 		}
+
+		err = p.loadbalancer.AddClient(key, token)
+		if err != nil {
+			klog.Errorf("Failed to create client for datacenter %s: %v", key, err)
+			return
+		}
 	}
 }
 
 func (p IONOS) LoadBalancer() (cloudprovider.LoadBalancer, bool) {
-	klog.Warning("The IONOS cloud provider does not support load balancers")
-	return nil, false
+	return p.loadbalancer, true
 }
 
 func (p IONOS) Instances() (cloudprovider.Instances, bool) {

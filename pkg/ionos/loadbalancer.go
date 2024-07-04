@@ -134,6 +134,20 @@ func (l loadbalancer) syncLoadBalancer(ctx context.Context, clusterName string, 
 		return nil, errors.New("we are only handling LoadBalancers with spec.loadBalancerID != ''")
 	}
 
+	if len(service.Status.LoadBalancer.Ingress) > 0 && service.Status.LoadBalancer.Ingress[0].IP != service.Spec.LoadBalancerIP {
+		klog.Infof("service %s/%s changed IP from %s to %s", service.Namespace, service.Name, service.Status.LoadBalancer.Ingress[0].IP, service.Spec.LoadBalancerIP)
+		server, err := l.ServerWithLoadBalancer(ctx, service.Status.LoadBalancer.Ingress[0].IP)
+		if err != nil {
+			return nil, err
+		}
+
+		if server != nil {
+			if err := l.deleteLoadBalancerFromNode(ctx, service.Status.LoadBalancer.Ingress[0].IP, server); err != nil {
+				return nil, err
+			}
+		}
+	}
+
 	server, err := l.ServerWithLoadBalancer(ctx, service.Spec.LoadBalancerIP)
 	if err != nil {
 		return nil, err
@@ -159,7 +173,7 @@ func (l loadbalancer) syncLoadBalancer(ctx context.Context, clusterName string, 
 	if loadBalancerNode == nil {
 		return nil, errors.New("no valid nodes found")
 	}
-	klog.Infof("server %s is elected as new loadbalancer node", server)
+	klog.Infof("server %s is elected as new loadbalancer node", loadBalancerNode)
 
 	for _, client := range l.ionosClients {
 		ok, err := client.AttachIPToNode(ctx, service.Spec.LoadBalancerIP, stripProviderFromID(loadBalancerNode.Spec.ProviderID))

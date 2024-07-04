@@ -91,17 +91,18 @@ func (l loadbalancer) UpdateLoadBalancer(ctx context.Context, clusterName string
 func (l loadbalancer) EnsureLoadBalancerDeleted(ctx context.Context, clusterName string, service *v1.Service) error {
 	klog.Infof("ensureLoadBalancerDeleted (service %s/%s)", service.Namespace, service.Name)
 
-	if service.Spec.LoadBalancerIP == "" {
-		return errors.New("we are only handling LoadBalancers with spec.loadBalancerID != ''")
-	}
+	if len(service.Status.LoadBalancer.Ingress) > 0 {
+		klog.Infof("removing IP %s", service.Status.LoadBalancer.Ingress[0].IP)
+		server, err := l.ServerWithLoadBalancer(ctx, service.Status.LoadBalancer.Ingress[0].IP)
+		if err != nil {
+			return err
+		}
 
-	server, err := l.ServerWithLoadBalancer(ctx, service.Spec.LoadBalancerIP)
-	if err != nil {
-		return err
-	}
-
-	if server != nil {
-		return l.deleteLoadBalancerFromNode(ctx, service.Spec.LoadBalancerIP, server)
+		if server != nil {
+			if err := l.deleteLoadBalancerFromNode(ctx, service.Status.LoadBalancer.Ingress[0].IP, server); err != nil {
+				return err
+			}
+		}
 	}
 
 	return nil
@@ -130,10 +131,6 @@ func (l loadbalancer) deleteLoadBalancerFromNode(ctx context.Context, loadBalanc
 func (l loadbalancer) syncLoadBalancer(ctx context.Context, clusterName string, service *v1.Service, nodes []*v1.Node) (*v1.LoadBalancerStatus, error) {
 	klog.Infof("syncLoadBalancer (service %s/%s, nodes %s)", service.Namespace, service.Name, nodes)
 
-	if service.Spec.LoadBalancerIP == "" {
-		return nil, errors.New("we are only handling LoadBalancers with spec.loadBalancerID != ''")
-	}
-
 	if len(service.Status.LoadBalancer.Ingress) > 0 && service.Status.LoadBalancer.Ingress[0].IP != service.Spec.LoadBalancerIP {
 		klog.Infof("service %s/%s changed IP from %s to %s", service.Namespace, service.Name, service.Status.LoadBalancer.Ingress[0].IP, service.Spec.LoadBalancerIP)
 		server, err := l.ServerWithLoadBalancer(ctx, service.Status.LoadBalancer.Ingress[0].IP)
@@ -146,6 +143,10 @@ func (l loadbalancer) syncLoadBalancer(ctx context.Context, clusterName string, 
 				return nil, err
 			}
 		}
+	}
+
+	if service.Spec.LoadBalancerIP == "" {
+		return nil, errors.New("we are only handling LoadBalancers with spec.loadBalancerID != ''")
 	}
 
 	server, err := l.ServerWithLoadBalancer(ctx, service.Spec.LoadBalancerIP)

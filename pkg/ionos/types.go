@@ -6,16 +6,11 @@ import (
 )
 
 type IONOS struct {
-	config       config.Config
-	instances    instances
-	loadbalancer loadbalancer
-	client       *client.IONOSClient
+	config    config.Config
+	instances instances
+	client    *client.IONOSClient
 }
 
 type instances struct {
-	ionosClients map[string]*client.IONOSClient
-}
-
-type loadbalancer struct {
-	ionosClients map[string]*client.IONOSClient
+	clients map[string]*client.IONOSClient
 }

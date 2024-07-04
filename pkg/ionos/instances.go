@@ -23,19 +23,19 @@ func GetUUIDFromNode(node *v1.Node) string {
 }
 
 func (i instances) AddClient(datacenterId string, token []byte) error {
-	if i.ionosClients[datacenterId] == nil {
+	if i.clients[datacenterId] == nil {
 		c, err := client2.New(datacenterId, token)
 		if err != nil {
 			return err
 		}
-		i.ionosClients[datacenterId] = &c
+		i.clients[datacenterId] = &c
 	}
 	return nil
 }
 
 // no caching
 func (i instances) discoverNode(ctx context.Context, node *v1.Node) (*cloudprovider.InstanceMetadata, error) {
-	for _, client := range i.ionosClients {
+	for _, client := range i.clients {
 		var err error
 		var server *cloudprovider.InstanceMetadata
 		providerID := GetUUIDFromNode(node)

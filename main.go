@@ -6,8 +6,6 @@ import (
 	"os"
 	"time"
 
-	"github.com/GDATASoftwareAG/cloud-provider-ionoscloud/pkg/config"
-	_ "github.com/GDATASoftwareAG/cloud-provider-ionoscloud/pkg/ionos"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	cloudprovider "k8s.io/cloud-provider"
@@ -20,7 +18,10 @@ import (
 	"k8s.io/component-base/logs"
 	"k8s.io/component-base/term"
 	"k8s.io/component-base/version/verflag"
-	klog "k8s.io/klog/v2"
+	"k8s.io/klog/v2"
+
+	"github.com/GDATASoftwareAG/cloud-provider-ionoscloud/pkg/config"
+	_ "github.com/GDATASoftwareAG/cloud-provider-ionoscloud/pkg/ionos"
 )
 
 const AppName string = "ionoscloud-cloud-controller-manager"

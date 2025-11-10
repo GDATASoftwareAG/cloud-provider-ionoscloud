@@ -3,9 +3,11 @@ package ionos
 import (
 	"context"
 	"encoding/json"
+	"io"
+
 	client2 "github.com/GDATASoftwareAG/cloud-provider-ionoscloud/pkg/client"
 	"github.com/GDATASoftwareAG/cloud-provider-ionoscloud/pkg/config"
-	"io"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	cloudprovider "k8s.io/cloud-provider"
 	"k8s.io/klog/v2"
@@ -13,7 +15,6 @@ import (
 
 func init() {
 	cloudprovider.RegisterCloudProvider(config.RegisteredProviderName, func(cfg io.Reader) (cloudprovider.Interface, error) {
-
 		byConfig, err := io.ReadAll(cfg)
 		if err != nil {
 			klog.Errorf("ReadAll failed: %s", err)

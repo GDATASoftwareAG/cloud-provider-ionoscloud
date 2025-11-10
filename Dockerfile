@@ -1,4 +1,4 @@
-FROM golang:1.21.6-bullseye as builder
+FROM golang:1.24.7-trixie as builder
 
 COPY . /code/cloud-provider-ionoscloud
 WORKDIR /code/cloud-provider-ionoscloud

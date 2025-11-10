@@ -8,8 +8,9 @@ import (
 	"net"
 	"strings"
 
-	"github.com/GDATASoftwareAG/cloud-provider-ionoscloud/pkg/config"
 	v1 "k8s.io/api/core/v1"
+
+	"github.com/GDATASoftwareAG/cloud-provider-ionoscloud/pkg/config"
 
 	ionoscloud "github.com/ionos-cloud/sdk-go/v6"
 	cloudprovider "k8s.io/cloud-provider"
@@ -98,11 +99,39 @@ func (a *IONOSClient) RemoveIPFromNode(ctx context.Context, loadBalancerIP, prov
 		}
 	}
 
+	ready, err := a.requestReady(ctx, fmt.Sprintf("/datacenters/%s/servers/%s/nics/%s", a.DatacenterId, providerID, *primaryNic.Id))
+	if err != nil {
+		return err
+	}
+	if !ready {
+		return errors.New("request is not ready")
+	}
 	_, _, err = a.client.NetworkInterfacesApi.DatacentersServersNicsPatch(ctx, a.DatacenterId, providerID, *primaryNic.Id).Nic(ionoscloud.NicProperties{
 		Ips: &ips,
 	}).Execute()
 
 	return err
+}
+
+func (a *IONOSClient) requestReady(ctx context.Context, url string) (bool, error) {
+	execute, _, err := a.client.RequestsApi.RequestsGet(ctx).Depth(2).FilterUrl(url).Execute()
+	if err != nil {
+		return false, err
+	}
+	for _, request := range *execute.Items {
+		status := request.Metadata.RequestStatus
+
+		if !status.HasMetadata() || !status.Metadata.HasStatus() {
+			return false, errors.New("request status metadata is missing")
+		}
+		if *status.Metadata.Status == ionoscloud.RequestStatusQueued {
+			return false, nil
+		}
+		if *status.Metadata.Status == ionoscloud.RequestStatusRunning {
+			return false, nil
+		}
+	}
+	return true, nil
 }
 
 func getPrimaryNic(nics []ionoscloud.Nic) *ionoscloud.Nic {
@@ -136,6 +165,13 @@ func (a *IONOSClient) AttachIPToNode(ctx context.Context, loadBalancerIP, provid
 	ips := *primaryNic.Properties.Ips
 	ips = append(ips, loadBalancerIP)
 
+	ready, err := a.requestReady(ctx, fmt.Sprintf("/datacenters/%s/servers/%s/nics/%s", a.DatacenterId, providerID, *primaryNic.Id))
+	if err != nil {
+		return false, err
+	}
+	if !ready {
+		return false, errors.New("request is not ready")
+	}
 	_, _, err = a.client.NetworkInterfacesApi.DatacentersServersNicsPatch(ctx, a.DatacenterId, providerID, *primaryNic.Id).Nic(ionoscloud.NicProperties{
 		Ips: &ips,
 	}).Execute()

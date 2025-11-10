@@ -4,12 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	client2 "github.com/GDATASoftwareAG/cloud-provider-ionoscloud/pkg/client"
-	"github.com/GDATASoftwareAG/cloud-provider-ionoscloud/pkg/config"
+	"strings"
+
 	v1 "k8s.io/api/core/v1"
 	cloudprovider "k8s.io/cloud-provider"
 	"k8s.io/klog/v2"
-	"strings"
+
+	client2 "github.com/GDATASoftwareAG/cloud-provider-ionoscloud/pkg/client"
+	"github.com/GDATASoftwareAG/cloud-provider-ionoscloud/pkg/config"
 )
 
 var _ cloudprovider.InstancesV2 = &instances{}
@@ -61,7 +63,6 @@ func (i instances) InstanceExists(ctx context.Context, node *v1.Node) (bool, err
 	server, err := i.discoverNode(ctx, node)
 	klog.InfoDepth(1, server)
 	return server != nil, err
-
 }
 
 func (i instances) InstanceShutdown(_ context.Context, node *v1.Node) (bool, error) {

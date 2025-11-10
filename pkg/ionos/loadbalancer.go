@@ -3,13 +3,15 @@ package ionos
 import (
 	"context"
 	"errors"
-	client2 "github.com/GDATASoftwareAG/cloud-provider-ionoscloud/pkg/client"
-	v1 "k8s.io/api/core/v1"
-	cloudprovider "k8s.io/cloud-provider"
-	"k8s.io/klog/v2"
 	"math/rand"
 	"strings"
 	"time"
+
+	v1 "k8s.io/api/core/v1"
+	cloudprovider "k8s.io/cloud-provider"
+	"k8s.io/klog/v2"
+
+	client2 "github.com/GDATASoftwareAG/cloud-provider-ionoscloud/pkg/client"
 )
 
 var _ cloudprovider.LoadBalancer = &loadbalancer{}

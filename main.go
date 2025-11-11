@@ -2,9 +2,7 @@ package main
 
 import (
 	"fmt"
-	"math/rand"
 	"os"
-	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -29,8 +27,6 @@ const AppName string = "ionoscloud-cloud-controller-manager"
 var version string
 
 func main() {
-	rand.Seed(time.Now().UTC().UnixNano())
-
 	ccmOptions, err := options.NewCloudControllerManagerOptions()
 	if err != nil {
 		klog.Fatalf("unable to initialize command options: %v", err)
@@ -38,7 +34,7 @@ func main() {
 
 	command := &cobra.Command{
 		Use:  AppName,
-		Long: fmt.Sprintf("%s manages vSphere cloud resources for a Kubernetes cluster.", AppName),
+		Long: fmt.Sprintf("%s manages ionos cloud resources for a Kubernetes cluster.", AppName),
 		Args: func(cmd *cobra.Command, args []string) error {
 			for _, arg := range args {
 				if len(arg) > 0 {

@@ -3,9 +3,7 @@ package ionos
 import (
 	"context"
 	"errors"
-	"math/rand"
 	"strings"
-	"time"
 
 	v1 "k8s.io/api/core/v1"
 	cloudprovider "k8s.io/cloud-provider"
@@ -36,7 +34,7 @@ func (l loadbalancer) AddClient(datacenterId string, token []byte) error {
 // For the given LB service, the GetLoadBalancer must return "exists=True" if
 // there exists a LoadBalancer instance created by ServiceController.
 // In all other cases, GetLoadBalancer must return a NotFound error.
-func (l loadbalancer) GetLoadBalancer(ctx context.Context, clusterName string, service *v1.Service) (status *v1.LoadBalancerStatus, exists bool, err error) {
+func (l loadbalancer) GetLoadBalancer(ctx context.Context, _ string, service *v1.Service) (status *v1.LoadBalancerStatus, exists bool, err error) {
 	klog.Infof("getLoadBalancer (service %s/%s)", service.Namespace, service.Name)
 
 	server, err := l.ServerWithLoadBalancer(ctx, service.Spec.LoadBalancerIP)
@@ -53,7 +51,7 @@ func (l loadbalancer) GetLoadBalancer(ctx context.Context, clusterName string, s
 
 // GetLoadBalancerName returns the name of the load balancer. Implementations must treat the
 // *v1.Service parameter as read-only and not modify it.
-func (l loadbalancer) GetLoadBalancerName(ctx context.Context, clusterName string, service *v1.Service) string {
+func (l loadbalancer) GetLoadBalancerName(_ context.Context, _ string, service *v1.Service) string {
 	return cloudprovider.DefaultLoadBalancerName(service)
 }
 
@@ -90,7 +88,7 @@ func (l loadbalancer) UpdateLoadBalancer(ctx context.Context, clusterName string
 // Parameter 'clusterName' is the name of the cluster as presented to kube-controller-manager
 // EnsureLoadBalancerDeleted must not return ImplementedElsewhere to ensure
 // proper teardown of resources that were allocated by the ServiceController.
-func (l loadbalancer) EnsureLoadBalancerDeleted(ctx context.Context, clusterName string, service *v1.Service) error {
+func (l loadbalancer) EnsureLoadBalancerDeleted(ctx context.Context, _ string, service *v1.Service) error {
 	klog.Infof("ensureLoadBalancerDeleted (service %s/%s)", service.Namespace, service.Name)
 
 	if len(service.Status.LoadBalancer.Ingress) > 0 {
@@ -130,7 +128,7 @@ func (l loadbalancer) deleteLoadBalancerFromNode(ctx context.Context, loadBalanc
 	return nil
 }
 
-func (l loadbalancer) syncLoadBalancer(ctx context.Context, clusterName string, service *v1.Service, nodes []*v1.Node) (*v1.LoadBalancerStatus, error) {
+func (l loadbalancer) syncLoadBalancer(ctx context.Context, _ string, service *v1.Service, nodes []*v1.Node) (*v1.LoadBalancerStatus, error) {
 	klog.Infof("syncLoadBalancer (service %s/%s, nodes %s)", service.Namespace, service.Name, nodes)
 
 	if len(service.Status.LoadBalancer.Ingress) > 0 && service.Status.LoadBalancer.Ingress[0].IP != service.Spec.LoadBalancerIP {
@@ -192,7 +190,7 @@ func (l loadbalancer) syncLoadBalancer(ctx context.Context, clusterName string, 
 		}
 	}
 
-	klog.Infof("Could not attach ip %s to any node", service.Spec.LoadBalancerIP)
+	klog.Infof("could not attach ip %s to any node", service.Spec.LoadBalancerIP)
 	return nil, nil
 }
 
@@ -215,8 +213,7 @@ func (l loadbalancer) GetLoadBalancerNode(nodes []*v1.Node) *v1.Node {
 	if candidates == nil && len(candidates) == 0 {
 		return nil
 	}
-	rand.Seed(time.Now().UnixNano())
-	randomIndex := rand.Intn(len(candidates))
+	randomIndex := l.r.Intn(len(candidates))
 	return candidates[randomIndex]
 }
 

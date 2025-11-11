@@ -48,7 +48,7 @@ func (i instances) discoverNode(ctx context.Context, node *v1.Node) (*cloudprovi
 			server, err = client.GetServerByName(ctx, node.Name)
 		}
 		if err != nil {
-			return nil, errors.New(fmt.Sprintf("failed to discoverNode %v", err))
+			return nil, fmt.Errorf("failed to discoverNode %v", err)
 		}
 		if server == nil {
 			continue

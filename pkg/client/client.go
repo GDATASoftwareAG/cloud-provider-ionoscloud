@@ -195,16 +195,15 @@ func (a *IONOSClient) GetServerByIP(ctx context.Context, loadBalancerIP string) 
 	}
 
 	for _, server := range *servers.Items {
-		klog.Infof("Checking server %s", server.Properties.Name)
+		klog.Infof("checking server %s and looking for loadbalancer ip %s", *server.Properties.Name, loadBalancerIP)
 		if !server.Entities.HasNics() {
 			continue
 		}
 		for _, nic := range *server.Entities.Nics.Items {
 			if nic.Properties.HasIps() {
 				for _, ip := range *nic.Properties.Ips {
-					klog.Infof("Found ip  %s", ip)
+					klog.Infof("found ip %s", ip)
 					if loadBalancerIP == ip {
-						klog.Info("Its a match!")
 						return &Server{
 							Name:         *server.Properties.Name,
 							ProviderID:   *server.Id,
@@ -248,14 +247,14 @@ func (a *IONOSClient) convertServerToInstanceMetadata(ctx context.Context, serve
 	}
 
 	var addresses []v1.NodeAddress
-	klog.Infof("Found %v nics", len(*server.Entities.Nics.Items))
+	klog.Infof("found %v nics", len(*server.Entities.Nics.Items))
 	for _, nic := range *server.Entities.Nics.Items {
 		ips := *nic.Properties.Ips
 		nicName := "unknown"
 		if nic.Properties.Name != nil {
 			nicName = *nic.Properties.Name
 		}
-		klog.Infof("Found %v ips for nic %s. Only using the first one as the remaining ones are failover ips", len(ips), nicName)
+		klog.Infof("found %v ips for nic %s. Only using the first one as the remaining ones are failover ips", len(ips), nicName)
 		if len(ips) > 0 {
 			ipStr := ips[0]
 			ip := net.ParseIP(ipStr)
@@ -282,8 +281,6 @@ func (a *IONOSClient) convertServerToInstanceMetadata(ctx context.Context, serve
 		Zone:          *server.Properties.AvailabilityZone,
 		Region:        strings.Replace(location, "/", "-", 1),
 	}
-
-	klog.InfoDepth(1, metadata)
 	return metadata, err
 }
 

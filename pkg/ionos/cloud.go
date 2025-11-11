@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"math/rand"
+	"time"
 
 	client2 "github.com/GDATASoftwareAG/cloud-provider-ionoscloud/pkg/client"
 	"github.com/GDATASoftwareAG/cloud-provider-ionoscloud/pkg/config"
@@ -15,6 +17,7 @@ import (
 
 func init() {
 	cloudprovider.RegisterCloudProvider(config.RegisteredProviderName, func(cfg io.Reader) (cloudprovider.Interface, error) {
+		r := rand.New(rand.NewSource(time.Now().UnixNano()))
 		byConfig, err := io.ReadAll(cfg)
 		if err != nil {
 			klog.Errorf("ReadAll failed: %s", err)
@@ -26,19 +29,20 @@ func init() {
 			return nil, err
 		}
 
-		return newProvider(conf), nil
+		return newProvider(conf, r), nil
 	})
 }
 
 var _ cloudprovider.Interface = &IONOS{}
 
-func newProvider(config config.Config) cloudprovider.Interface {
+func newProvider(config config.Config, r *rand.Rand) cloudprovider.Interface {
 	return IONOS{
 		config: config,
 		instances: instances{
 			ionosClients: map[string]*client2.IONOSClient{},
 		},
 		loadbalancer: loadbalancer{
+			r:            r,
 			ionosClients: map[string]*client2.IONOSClient{},
 		},
 	}

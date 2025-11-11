@@ -1,6 +1,8 @@
 package ionos
 
 import (
+	"math/rand"
+
 	"github.com/GDATASoftwareAG/cloud-provider-ionoscloud/pkg/client"
 	"github.com/GDATASoftwareAG/cloud-provider-ionoscloud/pkg/config"
 )
@@ -9,7 +11,6 @@ type IONOS struct {
 	config       config.Config
 	instances    instances
 	loadbalancer loadbalancer
-	client       *client.IONOSClient
 }
 
 type instances struct {
@@ -17,5 +18,6 @@ type instances struct {
 }
 
 type loadbalancer struct {
+	r            *rand.Rand
 	ionosClients map[string]*client.IONOSClient
 }

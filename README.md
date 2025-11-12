@@ -1,6 +1,6 @@
 # cloud-provider-ionoscloud
 
-This implementation is only an basic implementation of cloud provider to get [CAPIC](https://github.com/GDATASoftwareAG/cluster-api-provider-ionoscloud) running.
+This implementation is only an basic implementation of cloud provider to get [CAPIC](https://github.com/ionos-cloud/cluster-api-provider-ionoscloud) running.
 
 
 ## Example manifests
@@ -13,7 +13,7 @@ This is not an offical implementation of cloud provider for IONOS.
 
 ## License
 
-Copyright 2024.
+Copyright 2025.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.

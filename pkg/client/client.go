@@ -35,6 +35,13 @@ type Server struct {
 	DatacenterID string
 }
 
+type Volume struct {
+	ID           string
+	Name         string
+	ServerID     string
+	DatacenterID string
+}
+
 func New(datacenterId string, secret []byte) (IONOSClient, error) {
 	var cfg *ionoscloud.Configuration
 	if secret[0] == '{' {
@@ -70,6 +77,35 @@ func (a *IONOSClient) GetServer(ctx context.Context, providerID string) (*cloudp
 		return nil, err
 	}
 	return a.convertServerToInstanceMetadata(ctx, &server)
+}
+
+func (a *IONOSClient) GetServerVolumes(ctx context.Context, providerID string) ([]Volume, error) {
+	if a.client == nil {
+		return nil, errors.New("client isn't initialized")
+	}
+	volumesReq := a.client.ServersApi.DatacentersServersVolumesGet(ctx, a.DatacenterId, providerID)
+	volumes, req, err := volumesReq.Depth(1).Execute()
+	if err != nil || req != nil && req.StatusCode == 404 {
+		if err != nil {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	var list []Volume
+
+	for _, volume := range *volumes.Items {
+		if volume.Properties == nil {
+			continue
+		}
+		list = append(list, Volume{
+			DatacenterID: a.DatacenterId,
+			ServerID:     providerID,
+			ID:           *volume.Id,
+			Name:         *volume.Properties.Name,
+		})
+	}
+	return list, nil
 }
 
 func (a *IONOSClient) RemoveIPFromNode(ctx context.Context, loadBalancerIP, providerID string) error {

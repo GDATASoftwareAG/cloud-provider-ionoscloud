@@ -72,6 +72,22 @@ func (a *IONOSClient) GetServer(ctx context.Context, providerID string) (*cloudp
 	return a.convertServerToInstanceMetadata(ctx, &server)
 }
 
+func (a *IONOSClient) GetServerState(ctx context.Context, providerID string) (string, error) {
+	if a.client == nil {
+		return "", errors.New("client isn't initialized")
+	}
+	serverReq := a.client.ServersApi.DatacentersServersFindById(ctx, a.DatacenterId, providerID)
+	server, req, err := serverReq.Depth(0).Execute()
+	if err != nil || req != nil && req.StatusCode == 404 {
+		if err != nil {
+			return "", nil
+		}
+		return "", err
+	}
+	// Possible states: "NOSTATE" "RUNNING" "BLOCKED" "PAUSED" "SHUTDOWN" "SHUTOFF" "CRASHED" "SUSPENDED"
+	return *server.Properties.VmState, nil
+}
+
 func (a *IONOSClient) RemoveIPFromNode(ctx context.Context, loadBalancerIP, providerID string) error {
 	if a.client == nil {
 		return errors.New("client isn't initialized")

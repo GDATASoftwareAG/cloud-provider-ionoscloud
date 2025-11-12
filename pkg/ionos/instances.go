@@ -37,10 +37,10 @@ func (i instances) AddClient(datacenterId string, token []byte) error {
 
 // no caching
 func (i instances) discoverNode(ctx context.Context, node *v1.Node) (*cloudprovider.InstanceMetadata, error) {
+	providerID := GetUUIDFromNode(node)
 	for _, client := range i.ionosClients {
 		var err error
 		var server *cloudprovider.InstanceMetadata
-		providerID := GetUUIDFromNode(node)
 		klog.Infof("discoverNode (datacenterId %s) %s %s", client.DatacenterId, node.Name, providerID)
 		if providerID != "" {
 			server, err = client.GetServer(ctx, providerID)
@@ -55,7 +55,7 @@ func (i instances) discoverNode(ctx context.Context, node *v1.Node) (*cloudprovi
 		}
 		return server, nil
 	}
-	return nil, errors.New("failed to discoverNode")
+	return nil, nil
 }
 
 func (i instances) InstanceExists(ctx context.Context, node *v1.Node) (bool, error) {
@@ -65,15 +65,33 @@ func (i instances) InstanceExists(ctx context.Context, node *v1.Node) (bool, err
 	return server != nil, err
 }
 
-func (i instances) InstanceShutdown(_ context.Context, node *v1.Node) (bool, error) {
+func (i instances) InstanceShutdown(ctx context.Context, node *v1.Node) (bool, error) {
 	klog.Infof("InstanceShutdown %s", node.Name)
-	// TODO check here for mounted volumes
-	return true, nil
+	providerID := GetUUIDFromNode(node)
+	if providerID == "" {
+		return false, nil
+	}
+	for _, client := range i.ionosClients {
+		serverState, err := client.GetServerState(ctx, providerID)
+		if err != nil {
+			continue
+		}
+		if serverState == "" {
+			continue
+		}
+		if serverState != "RUNNING" && serverState != "NOSTATE" && serverState != "BLOCKED" {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func (i instances) InstanceMetadata(ctx context.Context, node *v1.Node) (*cloudprovider.InstanceMetadata, error) {
 	klog.Infof("InstanceMetadata %s", node.Name)
 	server, err := i.discoverNode(ctx, node)
+	if server == nil && err == nil {
+		return nil, errors.New("failed to discoverNode")
+	}
 	klog.InfoDepth(1, server)
 	return server, err
 }

@@ -9,7 +9,7 @@ trim_trailing_whitespace = true
 charset = utf-8
 max_line_length = 120
 
-[{*.go}]
+[*.go]
 indent_style = tab
 insert_final_newline = true
 

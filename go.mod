@@ -5,7 +5,7 @@ go 1.24.0
 toolchain go1.24.7
 
 require (
-	github.com/ionos-cloud/sdk-go/v6 v6.3.5
+	github.com/ionos-cloud/sdk-go/v6 v6.3.6
 	github.com/spf13/cobra v1.10.1
 	github.com/spf13/pflag v1.0.10
 	k8s.io/api v0.33.5
